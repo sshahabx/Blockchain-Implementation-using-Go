@@ -15,8 +15,41 @@ type Block struct {
 	thisHash     string
 }
 
+type Transaction struct {
+	TransactionID             string
+	senderBlockchainAddress   string
+	recipentBlockchainAddress string
+	value                     float32
+}
+
 type Blockchain struct {
-	blocks []*Block
+	blocks          []*Block
+	TransactionPool []*Transaction
+}
+
+func newTransaction(sender string, recipent string, value float32) *Transaction {
+
+	t := new(Transaction)
+	t.senderBlockchainAddress = sender
+	t.recipentBlockchainAddress = recipent
+	t.value = value
+
+	t.TransactionID = calHashTrans(t)
+
+	return t
+}
+
+func calHashTrans(t *Transaction) string {
+	data := fmt.Sprintf("%s%s%f", t.senderBlockchainAddress, t.recipentBlockchainAddress, t.value)
+	hash := sha256.Sum256([]byte(data))
+	hashString := hex.EncodeToString(hash[:])
+	return hashString
+}
+
+func (bc *Blockchain) AddTransaction(sender string, recipient string, value float32) {
+	transaction := newTransaction(sender, recipient, value)
+
+	bc.TransactionPool = append(bc.TransactionPool, transaction)
 }
 
 func calculateHash(b *Block) string {
@@ -71,6 +104,7 @@ func (bc *Blockchain) printBlockchain() {
 }
 
 func (bc *Blockchain) verifyChain() bool {
+
 	for i := 1; i < len(bc.blocks); i++ {
 		currentBlock := bc.blocks[i]
 		previousBlock := bc.blocks[i-1]
@@ -78,9 +112,12 @@ func (bc *Blockchain) verifyChain() bool {
 		currentBlockHash := calculateHash(currentBlock)
 
 		if currentBlock.thisHash != currentBlockHash {
+
+			fmt.Println(currentBlock.thisHash, currentBlockHash)
 			return false
 		}
 		if currentBlock.previousHash != previousBlock.thisHash {
+			fmt.Println(currentBlock.previousHash, previousBlock.thisHash)
 			return false
 		}
 	}
@@ -118,18 +155,8 @@ func main() {
 		fmt.Println("Blockchain is invalid.")
 	}
 
-	/* Tampering the chain by Bob
-	blockchain.blocks[1].transactions[0] = "100 coins to Bob"
-
-	if blockchain.verifyChain() {
-		fmt.Println("Blockchain is valid.")
-	} else {
-		fmt.Println("Blockchain is invalid.")
-	}
-	*/
-
 	newTransactions := []string{"100 sCoin to Bob"}
-	err := blockchain.modifyBlockChain(1, newTransactions)
+	err := blockchain.modifyBlockChain(2, newTransactions)
 
 	if err != nil {
 		fmt.Println("Error Modifying Chain", err)
@@ -142,4 +169,3 @@ func main() {
 	}
 
 }
-
