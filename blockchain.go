@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -11,15 +12,15 @@ type Block struct {
 	index        int
 	previousHash string
 	timestamp    int64
-	transactions []string
+	transactions []*Transaction
 	thisHash     string
 }
 
 type Transaction struct {
-	TransactionID             string
-	senderBlockchainAddress   string
-	recipentBlockchainAddress string
-	value                     float32
+	TransactionID              string
+	SenderBlockchainAddress    string
+	RecipientBlockchainAddress string
+	Value                      float32
 }
 
 type Blockchain struct {
@@ -27,12 +28,12 @@ type Blockchain struct {
 	TransactionPool []*Transaction
 }
 
-func newTransaction(sender string, recipent string, value float32) *Transaction {
+func newTransaction(sender string, recipent string, Value float32) *Transaction {
 
 	t := new(Transaction)
-	t.senderBlockchainAddress = sender
-	t.recipentBlockchainAddress = recipent
-	t.value = value
+	t.SenderBlockchainAddress = sender
+	t.RecipientBlockchainAddress = recipent
+	t.Value = Value
 
 	t.TransactionID = calHashTrans(t)
 
@@ -40,26 +41,33 @@ func newTransaction(sender string, recipent string, value float32) *Transaction 
 }
 
 func calHashTrans(t *Transaction) string {
-	data := fmt.Sprintf("%s%s%f", t.senderBlockchainAddress, t.recipentBlockchainAddress, t.value)
+	data := fmt.Sprintf("%s%s%f", t.SenderBlockchainAddress, t.RecipientBlockchainAddress, t.Value)
 	hash := sha256.Sum256([]byte(data))
 	hashString := hex.EncodeToString(hash[:])
 	return hashString
 }
 
-func (bc *Blockchain) AddTransaction(sender string, recipient string, value float32) {
-	transaction := newTransaction(sender, recipient, value)
+func (bc *Blockchain) AddTransaction(sender string, recipient string, Value float32) {
+	transaction := newTransaction(sender, recipient, Value)
 
 	bc.TransactionPool = append(bc.TransactionPool, transaction)
 }
 
 func calculateHash(b *Block) string {
-	data := fmt.Sprintf("%d%s%d%s", b.index, b.previousHash, b.timestamp, b.transactions)
+
+	var transactionsData string
+
+	for _, t := range b.transactions {
+		transactionsData += fmt.Sprintf("%s%s%s%f", t.TransactionID, t.SenderBlockchainAddress, t.RecipientBlockchainAddress, t.Value)
+	}
+
+	data := fmt.Sprintf("%d%s%d%s", b.index, b.previousHash, b.timestamp, transactionsData)
 	hash := sha256.Sum256([]byte(data))
 	hashString := hex.EncodeToString(hash[:])
 	return hashString
 }
 
-func newBlock(index int, previousHash string, transactions []string) *Block {
+func newBlock(index int, previousHash string, transactions []*Transaction) *Block {
 
 	b := new(Block)
 	b.index = index
@@ -74,20 +82,43 @@ func printBlock(obj Block) {
 	fmt.Println("Index:              ", obj.index)
 	fmt.Println("Previous Hash:      ", obj.previousHash)
 	fmt.Println("Timestamp:          ", obj.timestamp)
-	fmt.Println("Block Transactions: ", obj.transactions)
 	fmt.Println("Current Block Hash: ", obj.thisHash)
 
+	fmt.Println("Block Transactions: ", obj.transactions)
+
+	// for _, t := range obj.transactions {
+	// 	fmt.Printf("\tTransaction ID: %s\n", t.TransactionID)
+	// 	fmt.Printf("\tSender: %s\n", t.SenderBlockchainAddress)
+	// 	fmt.Printf("\tRecipient: %s\n", t.RecipientBlockchainAddress)
+	// 	fmt.Printf("\tValue: %f\n", t.Value)
+	// 	fmt.Println()
+	// }
+	transactionsJSON, err := json.MarshalIndent(obj.transactions, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshalling transactions to JSON:", err)
+		return
+	}
+
+	fmt.Println("Transactions: ")
+	fmt.Println(string(transactionsJSON))
 }
 
 func NewBlockchain() *Blockchain {
-	genesisBlock := newBlock(0, "0", []string{"Genesis Block"})
+	genesisTransaction := &Transaction{
+		TransactionID:              "0",
+		SenderBlockchainAddress:    "0",
+		RecipientBlockchainAddress: "0",
+		Value:                      0,
+	}
+
+	genesisBlock := newBlock(0, "0", []*Transaction{genesisTransaction})
 
 	return &Blockchain{
 		blocks: []*Block{genesisBlock},
 	}
 }
 
-func (bc *Blockchain) addBlock(transactions []string) {
+func (bc *Blockchain) addBlock(transactions []*Transaction) {
 	previousBlock := bc.blocks[len(bc.blocks)-1]
 	previousHash := previousBlock.thisHash
 
@@ -124,7 +155,7 @@ func (bc *Blockchain) verifyChain() bool {
 	return true
 }
 
-func (bc *Blockchain) modifyBlockChain(index int, newTransactions []string) error {
+func (bc *Blockchain) modifyBlockChain(index int, newTransactions []*Transaction) error {
 
 	if index < 0 || index >= len(bc.blocks) {
 		return fmt.Errorf("Invalid Block index: %d", index)
@@ -144,28 +175,50 @@ func (bc *Blockchain) modifyBlockChain(index int, newTransactions []string) erro
 func main() {
 
 	blockchain := NewBlockchain()
-	blockchain.addBlock([]string{"10 sCoin Alice to Bob", "15 sCoin Bob to Charlie"})
-	blockchain.addBlock([]string{"8 sCoin Bob to Alice", "1 sCoin Charlie to Alice"})
+
+	blockchain.AddTransaction("Alice", "Bob", 30)
+	blockchain.AddTransaction("Bob", "Charlie", 50)
+	blockchain.AddTransaction("Charlie", "Alice", 10)
+
+	fmt.Println("Initial Blockchain")
+	blockchain.printBlockchain()
+
+	blockchain.addBlock(blockchain.TransactionPool)
+
+	blockchain.TransactionPool = []*Transaction{}
+
+	fmt.Println("Updated Blockchain")
+	blockchain.printBlockchain()
+
+	blockchain.AddTransaction("David", "Eve", 10.0)
+	blockchain.AddTransaction("Eve", "Frank", 5.75)
+
+	blockchain.addBlock(blockchain.TransactionPool)
+	blockchain.TransactionPool = []*Transaction{}
 
 	blockchain.printBlockchain()
 
+	fmt.Println("Verifying Blockchain Integrity:")
 	if blockchain.verifyChain() {
-		fmt.Println("Blockchain is valid.")
+		fmt.Println("Blockchain is valid!")
 	} else {
-		fmt.Println("Blockchain is invalid.")
+		fmt.Println("Blockchain has been tampered with!")
 	}
 
-	newTransactions := []string{"100 sCoin to Bob"}
-	err := blockchain.modifyBlockChain(2, newTransactions)
+	err := blockchain.modifyBlockChain(1, []*Transaction{
+		{TransactionID: "1234", SenderBlockchainAddress: "Eve", RecipientBlockchainAddress: "Alice", Value: 100.0},
+	})
 
 	if err != nil {
-		fmt.Println("Error Modifying Chain", err)
+		fmt.Println("Error Modifying Blockchain")
+	} else {
+		blockchain.printBlockchain()
 	}
 
 	if blockchain.verifyChain() {
-		fmt.Println("Blockchain is Valid")
+		fmt.Println("Blockchain is valid!")
 	} else {
-		fmt.Println("Blockchain is Invalid")
+		fmt.Println("Blockchain has been tampered with!")
 	}
 
 }
